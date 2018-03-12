@@ -4,5 +4,5 @@
 
     <item
         android:id="@+id/add_place"
-        android:title="ADD Place" />
+        android:title="add Place" />
 </menu>

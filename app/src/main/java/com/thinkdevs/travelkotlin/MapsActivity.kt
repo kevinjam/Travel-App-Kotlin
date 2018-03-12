@@ -3,6 +3,7 @@ package com.thinkdevs.travelkotlin
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Geocoder
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -10,10 +11,13 @@ import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
+import android.widget.Toast
 import com.google.android.gms.maps.*
 
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import java.io.IOException
+import java.util.*
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 	
@@ -43,15 +47,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 	override fun onMapReady(googleMap: GoogleMap) {
 		mMap = googleMap
 		
+		mMap.setOnMapLongClickListener(mylisterner)
 		//get a user location
 		locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 		locationListener = object :LocationListener{
 			override fun onLocationChanged(location: Location?) {
 				//when a user change her location
 				if (location != null) {
-					var userlocation = LatLng(location!!.latitude, location!!.latitude)
-					mMap.addMarker(MarkerOptions().position(userlocation))
-					mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userlocation ,17f))
+					mMap.clear()
+					
+					val userLocation = LatLng(location.latitude, location.longitude)
+					mMap.addMarker(MarkerOptions().position(userLocation).title("Your Location"))
+					mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(userLocation, 15f))
+					
 				}
 			}
 			
@@ -71,30 +79,110 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 			
 		}else{
 			locationManager!!.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2, 2f, locationListener)
-			val intent = intent.getStringExtra("old")
+			
+			val mintent = intent
+			val info = mintent.getStringExtra("info")
 			println("UUUU $intent")
 			
-			if (intent.equals("new") ){
-			
+			if (info.equals("new") ){
 				mMap.clear()
-				val lastlocation = locationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-				var lastUserLocation = LatLng(lastlocation.latitude, lastlocation.longitude)
-				mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(lastUserLocation, 17f))
+				val lastLocation = locationManager!!.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+				val lastUserLocation = LatLng(lastLocation.latitude, lastLocation.longitude)
+				mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(lastUserLocation, 15f))
 				
 			}else{
-				//
+				println("-------INSIDE ELSE-------- ")
+				mMap.clear()
+				val latitude = intent.getDoubleExtra("latitude", 0.0)
+				val longitude = intent.getDoubleExtra("longitude", 0.0)
+				val name = intent.getStringExtra("name")
+				println("NAME NOW $name")
+				val location = LatLng(latitude, longitude)
+				mMap.addMarker(MarkerOptions().position(location).title(name))
+				mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(location, 14f))
+				
+				
+				
 			}
 		}
 		
 	}
 	
-	override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-		if (grantResults.size > 0){
-			if (ContextCompat.checkSelfPermission(this , Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED){
-				locationManager!!.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2, 2f, locationListener)
+	val mylisterner = object: GoogleMap.OnMapLongClickListener {
+		override fun onMapLongClick(p0: LatLng?) {
+			val geocoder =Geocoder(applicationContext, Locale.getDefault())
+			var address =""
+			try {
+				val addresslist = geocoder.getFromLocation(p0!!.latitude, p0.longitude, 1)
+				if (addresslist != null && addresslist.count() > 0){
+					if (addresslist[0].thoroughfare != null){
+						address +=addresslist[0].thoroughfare
+						if (addresslist[0].subThoroughfare != null){
+							address+= addresslist[0].subThoroughfare
+						}
+					}
+				}else{
+					address = "new Place"
+				}
+			}catch (e:Exception){
+			
 			}
+			
+			
+			mMap.addMarker(MarkerOptions().position(p0!!).title(address))
+			nameArray.add(address)
+			locationArray.add(p0)
+			
+			Toast.makeText(applicationContext, "new Place Created", Toast.LENGTH_LONG).show()
+			/**
+			 * Save into a Database
+			 */
+			try {
+//				//what to save
+				val latitude = p0.latitude.toString()
+				val longitude = p0.longitude.toString()
+				//convert into a string
+				
+//				val coord1 = latitude!!.toString()
+//				val coord2 = longitude!!.toString()
+				
+				val database = openOrCreateDatabase("Places", Context.MODE_PRIVATE, null)
+				database.execSQL("CREATE TABLE IF NOT EXISTS places (name VARCHAR, latitude VARCHAR, longitude VARCHAR)")
+				
+				val toCompile = "INSERT INTO places (name, latitude, longitude) VALUES (?, ?, ?)"
+				
+				val sqLiteStatement = database.compileStatement(toCompile)
+				
+				sqLiteStatement.bindString(1, address)
+				sqLiteStatement.bindString(2, latitude)
+				sqLiteStatement.bindString(3, longitude)
+				
+				//excute
+				sqLiteStatement.execute()
+				
+				
+			} catch (e: Exception) {
+				e.printStackTrace()
+			}
+			
+		}
+		
+		
+	}
+	
+	
+	override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+		
+		if (grantResults.size > 0) {
+			
+			if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+				
+				locationManager!!.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0f, locationListener)
+			}
+			
 		}
 		
 		super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 	}
+	
 }
